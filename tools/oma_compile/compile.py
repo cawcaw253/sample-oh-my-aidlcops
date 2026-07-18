@@ -401,7 +401,14 @@ def _emit_harness(dsl: dict, plugin_dir: Path, source: Path, write: bool) -> lis
 
     existing_hooks = None
     if hooks_json_path.exists():
-        existing_hooks = json.loads(hooks_json_path.read_text(encoding="utf-8"))
+        raw_existing = json.loads(hooks_json_path.read_text(encoding="utf-8"))
+        # Claude Code plugin hooks.json wraps event maps under a top-level
+        # "hooks" key (same shape as settings.json). Unwrap it so the marker-based
+        # re-own logic in _build_hooks_json operates on the event map directly.
+        if isinstance(raw_existing, dict) and "hooks" in raw_existing:
+            existing_hooks = raw_existing["hooks"]
+        else:
+            existing_hooks = raw_existing
     hooks_payload = _build_hooks_json(dsl, existing_hooks, source)
 
     policies = dsl.get("policies") or []
@@ -427,7 +434,9 @@ def _emit_harness(dsl: dict, plugin_dir: Path, source: Path, write: bool) -> lis
 
     if hooks_payload is not None:
         hooks_dir.mkdir(parents=True, exist_ok=True)
-        _write_json(hooks_json_path, hooks_payload)
+        # Wrap the event map under a top-level "hooks" key — the shape Claude
+        # Code's plugin hooks.json loader requires (mirrors settings.json).
+        _write_json(hooks_json_path, {"hooks": hooks_payload})
         written.append(hooks_json_path)
     elif hooks_json_path.exists():
         # Nothing managed and nothing hand-authored left → remove empty file.
