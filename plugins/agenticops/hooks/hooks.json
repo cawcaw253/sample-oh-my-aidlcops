@@ -10,5 +10,16 @@
         }
       ]
     }
+  ],
+  "PostToolUse": [
+    {
+      "_oma": "oma-audit-posttooluse",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/audit-posttooluse.sh\""
+        }
+      ]
+    }
   ]
 }

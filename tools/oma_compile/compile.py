@@ -297,11 +297,17 @@ HARNESS_HOOK_MARKER = "oma-harness-enforce"
 # Marker for the compiler-managed SessionStart entry (#60). Same re-own pattern
 # as the harness marker so hand-authored SessionStart hooks are preserved.
 SESSION_START_MARKER = "oma-session-start"
+# Marker for the compiler-managed PostToolUse audit entry. Its own marker keeps
+# re-own scoped per event so hand-authored PostToolUse hooks survive recompiles.
+POST_TOOL_USE_MARKER = "oma-audit-posttooluse"
 
 # DSL hook events the compiler emits into hooks/hooks.json, mapped to the
-# Claude Code hook event name. PreToolUse is handled separately (it is derived
-# from policies:, not from a hooks: declaration).
-_EMITTABLE_HOOK_EVENTS = {"session-start": "SessionStart"}
+# (Claude Code hook event name, re-own marker) it manages. PreToolUse is handled
+# separately (it is derived from policies:, not from a hooks: declaration).
+_EMITTABLE_HOOK_EVENTS = {
+    "session-start": ("SessionStart", SESSION_START_MARKER),
+    "post-tool-use": ("PostToolUse", POST_TOOL_USE_MARKER),
+}
 
 
 def _plugin_relative_hook_command(runs: str, source: Path) -> str:
@@ -328,8 +334,9 @@ def _build_hooks_json(dsl: dict, existing: dict | None, source: Path) -> dict | 
     Manages two entry kinds, both re-owned via an _oma marker so hand-authored
     entries survive recompiles:
       * PreToolUse — the harness enforcer, emitted when policies: is present.
-      * SessionStart — emitted when hooks.session-start.runs is declared (#60),
-        so ontology-state injection ships inside the plugin.
+      * SessionStart / PostToolUse — emitted when the matching hooks.<event>.runs
+        is declared, so ontology-state injection (#60, SessionStart) and
+        tool-call auditing (PostToolUse) ship inside the plugin.
 
     Returns the new payload, or None when nothing is managed and nothing was
     hand-authored.
@@ -356,18 +363,20 @@ def _build_hooks_json(dsl: dict, existing: dict | None, source: Path) -> dict | 
     else:
         payload.pop("PreToolUse", None)
 
-    # SessionStart (and any other emittable hooks:) — from the hooks: block.
+    # SessionStart / PostToolUse (and any other emittable hooks:) — from the
+    # hooks: block. Each event re-owns only its own marked entry, so
+    # hand-authored entries in the same group survive recompiles.
     hooks = dsl.get("hooks") or {}
-    for event, cc_event in _EMITTABLE_HOOK_EVENTS.items():
+    for event, (cc_event, marker) in _EMITTABLE_HOOK_EVENTS.items():
         managed = [
             e for e in (payload.get(cc_event) or [])
-            if e.get("_oma") != SESSION_START_MARKER
+            if e.get("_oma") != marker
         ]
         spec = hooks.get(event) or {}
         runs = spec.get("runs")
         if runs:
             entry = {
-                "_oma": SESSION_START_MARKER,
+                "_oma": marker,
                 "hooks": [{
                     "type": "command",
                     "command": _plugin_relative_hook_command(runs, source),

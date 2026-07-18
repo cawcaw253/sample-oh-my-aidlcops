@@ -131,6 +131,55 @@ skipped without disabling the others.
 `skill_ref` is **not** validated against the plugin file — skills are
 resolved at runtime by the harness.
 
+## Hook events (`hooks:`)
+
+The `hooks:` block declares plugin-bundled hooks the compiler emits into
+`hooks/hooks.json`. Each key is an event; `runs` is a script path that must stay
+inside the plugin root (so `/plugin install` ships it — a `../`-escaping path is
+a compile error). `PreToolUse` is **not** declared here; it is derived from the
+`policies:` block above, and coexists with a hooks-declared `PostToolUse` (each
+re-owns only its own `_oma`-marked entry).
+
+| Event | Emitted as | Bundled script | Purpose |
+|-------|-----------|----------------|---------|
+| `session-start` | `SessionStart` | `session-start-ontology.sh` | Inject active ontology state (Budgets, Incidents, Deployments) at session start |
+| `post-tool-use` | `PostToolUse` | `audit-posttooluse.sh` | Audit every tool call; nudge on state-changing calls |
+
+```yaml
+hooks:
+  post-tool-use:
+    runs: hooks/audit-posttooluse.sh
+```
+
+### Tool-call auditing (`post-tool-use`)
+
+`audit-posttooluse.sh` runs after every tool call and does two things:
+
+- **Audit (all tools)** — appends one JSON-L line per call to
+  `.omao/audit/tool-events.jsonl`, conforming to
+  [`schemas/audit/tool-event.schema.json`](https://github.com/aws-samples/sample-oh-my-aidlcops/blob/main/schemas/audit/tool-event.schema.json).
+  This makes the audit trail a property of the harness rather than of the agent
+  remembering to invoke the `audit-trail` skill. The tool-event schema is
+  self-contained (no `$ref`) so the hook emits conforming lines with just `jq`
+  (or `python3`) — no `jsonschema` dependency inside the installed plugin.
+- **Feedback (state-changing calls only)** — for mutating patterns (mutating
+  `kubectl`, `aws` delete/put/update/…, `terraform apply|destroy`, `helm`
+  install/upgrade/…, `rm|mv|cp|…`, `git push|reset|…`, `Write`, `Edit`), returns
+  a non-blocking `additionalContext` nudge to record the semantic ontology event
+  and check that no phase gate is blocked. `PostToolUse` runs *after* the tool,
+  so it cannot block — the `PreToolUse` enforcer (from `policies:`) is the hard
+  backstop; this is feedback.
+
+Kill switch: `OMA_DISABLE_AUDIT=1`. Like the other bundled hooks the script is
+self-contained (writes only under `.omao/`, no repo-root dependency) and
+requires a real JSON encoder so attacker-influenced tool inputs cannot corrupt
+the JSON-L line or the emitted payload.
+
+This tool-level log is distinct from `.omao/audit.jsonl`
+([`event.schema.json`](https://github.com/aws-samples/sample-oh-my-aidlcops/blob/main/schemas/audit/event.schema.json)),
+which records semantic ontology decisions (`approve`/`deploy`/`gate-pass`)
+against the eight ontology entities via `tools.oma_audit.append`.
+
 ## Backward compatibility guarantees
 
 - v1 files continue to validate under the same `dsl.schema.json`.
