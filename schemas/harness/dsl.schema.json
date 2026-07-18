@@ -63,7 +63,7 @@
       "additionalProperties": { "$ref": "#/definitions/mcpServer" }
     },
     "hooks": {
-      "description": "Harness hooks. Keys are Claude Code hook event names (session-start, pre-tool-use, ...).",
+      "description": "Harness hooks keyed by event name. The compiler emits a plugin-bundled hooks/hooks.json entry for each recognized event: session-start (ontology-state injection), stop and stop-failure (turn-end phase-gate enforcement via the bundled stop-gate.sh). Each runs path must stay inside the plugin root. PreToolUse is not declared here — it is derived from the policies: block.",
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/hook" }
     },
