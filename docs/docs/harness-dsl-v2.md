@@ -131,6 +131,58 @@ skipped without disabling the others.
 `skill_ref` is **not** validated against the plugin file — skills are
 resolved at runtime by the harness.
 
+## Hook events (`hooks:`)
+
+The `hooks:` block declares plugin-bundled hooks the compiler emits into
+`hooks/hooks.json`. Each key is an event; `runs` is a script path that must stay
+inside the plugin root (so `/plugin install` ships it — a `../`-escaping path is
+a compile error). `PreToolUse` is **not** declared here; it is derived from the
+`policies:` block above.
+
+| Event | Emitted as | Bundled script | Purpose |
+|-------|-----------|----------------|---------|
+| `session-start` | `SessionStart` | `session-start-ontology.sh` | Inject active ontology state (Budgets, Incidents, Deployments) at session start |
+| `stop` | `Stop` | `stop-gate.sh` | Turn-end phase-gate enforcement — block the turn from ending while a gate is blocked |
+| `stop-failure` | `StopFailure` | `stop-gate.sh` | Remind about blocked gates on a failed turn (never blocks) |
+
+```yaml
+hooks:
+  session-start:
+    runs: hooks/session-start-ontology.sh
+  stop:
+    runs: hooks/stop-gate.sh
+  stop-failure:
+    runs: hooks/stop-gate.sh
+```
+
+### Phase-gate enforcement (`stop` / `stop-failure`)
+
+The `quality-gates` skill writes a per-phase verdict to
+`.omao/state/gates/<phase>.json` (`status: passed|blocked`,
+`next_phase_allowed`, `blockers`, waiver reconciliation). `stop-gate.sh` is the
+**enforcement half**: it does not re-derive the verdict, it trusts the recorded
+one. When any gate is blocked (`status == "blocked"` or
+`next_phase_allowed == false`):
+
+- **`Stop`** returns `{"decision": "block", "reason": ...}` so the turn cannot
+  end — the agent that authored the work cannot silently skip its own gate
+  (the self-grading failure mode).
+- **`StopFailure`** never blocks (that would trap a failing session in a loop);
+  it surfaces a `systemMessage` reminder only.
+
+Controls:
+
+- `OMA_GATE_MODE=warn` — downgrade the `Stop` block to a non-blocking
+  `systemMessage`.
+- `OMA_DISABLE_GATES=1` — kill switch; the hook always passes through.
+- Reentry guard — Claude Code sets `stop_hook_active: true` when it re-runs the
+  Stop hook after a prior block; the hook passes through in that case to avoid a
+  deadlock.
+
+Like `session-start-ontology.sh`, the script is self-contained (reads only
+`.omao/state/gates/`, no repo-root dependency) and requires a real JSON encoder
+(`jq`, then `python3`) so user-editable gate files cannot inject keys.
+
 ## Backward compatibility guarantees
 
 - v1 files continue to validate under the same `dsl.schema.json`.

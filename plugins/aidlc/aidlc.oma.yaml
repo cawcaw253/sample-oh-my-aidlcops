@@ -85,15 +85,26 @@ policies:
       decision: deny
       reason: "Harness: writing secret-bearing files via the shell is blocked. Use a secrets manager (e.g. External Secrets, SSM) instead of committing secrets."
 # ---------------------------------------------------------------------------
-# Hooks — plugin-bundled, self-contained SessionStart (#60).
-# Injects active ontology state (.omao/ontology) at session start. Bundled
-# INSIDE the plugin so /plugin install ships it (the repo-root
-# hooks/session-start.sh is the richer CLI/dev-install variant). The compiler
-# emits the SessionStart entry into hooks/hooks.json from this declaration.
+# Hooks — plugin-bundled, self-contained.
+#   session-start: injects active ontology state (.omao/ontology) at session
+#     start (#60).
+#   stop / stop-failure: phase-gate enforcement. The quality-gates skill writes
+#     a verdict to .omao/state/gates/<phase>.json; stop-gate.sh reads that
+#     verdict and, on a blocked gate, blocks the turn from ending (Stop) or
+#     surfaces a reminder (StopFailure). Turn-end enforcement of the same gate
+#     the skill defines, so the agent that authored the work cannot silently
+#     skip it (the self-grading failure mode). Controls: OMA_GATE_MODE=warn
+#     downgrades block -> warning; OMA_DISABLE_GATES=1 disables.
+# All bundled INSIDE the plugin so /plugin install ships them. The compiler
+# emits the matching hooks/hooks.json entries from these declarations.
 # ---------------------------------------------------------------------------
 hooks:
   session-start:
     runs: hooks/session-start-ontology.sh
+  stop:
+    runs: hooks/stop-gate.sh
+  stop-failure:
+    runs: hooks/stop-gate.sh
 
 triggers:
   - id: inception

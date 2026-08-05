@@ -41,7 +41,7 @@ today — and, honestly, where it does not yet.
 |---|---|---|---|
 | **Retry Budget** | cap retries (e.g. 847 → 3) | `Budget.rule_expression` + `cost-governance` breach actions | ✅ |
 | **Cost Limit** | per-request/period spend caps | `Budget` entity (`limit_usd`, `period`, `action_on_breach`); sandboxed `simpleeval` evaluator | ✅ |
-| **Output Gate** | block incomplete/harmful output | `aidlc` → `construction/quality-gates` skill | ✅ |
+| **Output Gate** | block incomplete/harmful output | `aidlc` → `construction/quality-gates` skill (verdict) + bundled `Stop` hook (`stop-gate.sh`, turn-end enforcement) | ✅ |
 | **PII Masking** | protect sensitive data in/out/logs | `ai-infra` → `ai-gateway-guardrails` skill | ✅ |
 | **Prompt Injection Defense** | instruction hierarchy, delimiter isolation | `ai-gateway-guardrails` skill | ✅ |
 | **Timeout** | prevent infinite loops | Harness DSL `timeout` field | ⚠️ partial (declared in DSL; runtime enforcement evolving) |
@@ -93,6 +93,14 @@ early before they propagate downstream.
 OMA reflects this in its review lane: distinct reviewer roles (security, quality,
 code) run as separate agents, and `continuous-eval` re-checks deployed behavior
 against regression datasets rather than trusting the generating agent's own tests.
+
+The `Stop` hook (`stop-gate.sh`) closes a subtler gap: even with independent
+reviewers, the *generating* agent decides when a turn is done. When
+`quality-gates` records a blocked verdict in `.omao/state/gates/<phase>.json`,
+the Stop hook blocks the turn from ending at the harness level — so the agent
+that authored the work cannot silently declare victory past its own gate.
+`OMA_GATE_MODE=warn` downgrades this to a reminder; `OMA_DISABLE_GATES=1`
+disables it. See [Harness DSL v2 → Phase-gate enforcement](./harness-dsl-v2.md#phase-gate-enforcement-stop--stop-failure).
 
 ## How the two axes close the loop
 
