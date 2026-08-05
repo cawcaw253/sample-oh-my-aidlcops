@@ -41,7 +41,7 @@ today — and, honestly, where it does not yet.
 |---|---|---|---|
 | **Retry Budget** | cap retries (e.g. 847 → 3) | `Budget.rule_expression` + `cost-governance` breach actions | ✅ |
 | **Cost Limit** | per-request/period spend caps | `Budget` entity (`limit_usd`, `period`, `action_on_breach`); sandboxed `simpleeval` evaluator | ✅ |
-| **Output Gate** | block incomplete/harmful output | `aidlc` → `construction/quality-gates` skill | ✅ |
+| **Output Gate** | block incomplete/harmful output | `aidlc` → `construction/quality-gates` skill (verdict) + bundled `Stop` hook (`stop-gate.sh`, turn-end enforcement) | ✅ |
 | **PII Masking** | protect sensitive data in/out/logs | `ai-infra` → `ai-gateway-guardrails` skill | ✅ |
 | **Prompt Injection Defense** | instruction hierarchy, delimiter isolation | `ai-gateway-guardrails` skill | ✅ |
 | **Timeout** | prevent infinite loops | Harness DSL `timeout` field | ⚠️ partial (declared in DSL; runtime enforcement evolving) |

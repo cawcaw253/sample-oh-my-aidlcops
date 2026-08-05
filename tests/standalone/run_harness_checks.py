@@ -172,7 +172,8 @@ def test_compile_us003() -> None:
     hooks_dir = REPO_ROOT / "plugins" / "ai-infra" / "hooks"
     check("US-003 enforce.py bundled", (hooks_dir / "enforce.py").exists())
     check("US-003 harness-rules.json bundled", (hooks_dir / "harness-rules.json").exists())
-    hooks_json = json.loads((hooks_dir / "hooks.json").read_text())
+    # Claude Code plugin hooks.json wraps the event map under a top-level "hooks" key.
+    hooks_json = json.loads((hooks_dir / "hooks.json").read_text())["hooks"]
     cmd = hooks_json["PreToolUse"][0]["hooks"][0]["command"]
     check("US-003 hooks.json refs CLAUDE_PLUGIN_ROOT/hooks/enforce.py",
           "${CLAUDE_PLUGIN_ROOT}/hooks/enforce.py" in cmd, cmd)
