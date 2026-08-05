@@ -49,7 +49,7 @@ def test_session_start_entry_emitted(tmp_path):
     compile_plugin(dsl_path, write=True)
     hooks_json = json.loads(
         (dsl_path.parent / "hooks" / "hooks.json").read_text(encoding="utf-8")
-    )
+    )["hooks"]
     assert "SessionStart" in hooks_json
     entry = hooks_json["SessionStart"][0]
     assert entry["_oma"] == SESSION_START_MARKER
@@ -79,9 +79,8 @@ def test_no_hooks_no_session_start(tmp_path):
     compile_plugin(dsl_path, write=True)
     hooks_json_path = dsl_path.parent / "hooks" / "hooks.json"
     if hooks_json_path.exists():
-        assert "SessionStart" not in json.loads(
-            hooks_json_path.read_text(encoding="utf-8")
-        )
+        payload = json.loads(hooks_json_path.read_text(encoding="utf-8"))
+        assert "SessionStart" not in payload.get("hooks", {})
 
 
 def test_hand_authored_session_start_preserved(tmp_path):
@@ -95,3 +94,41 @@ def test_hand_authored_session_start_preserved(tmp_path):
     events = payload["SessionStart"]
     assert any(e["hooks"][0]["command"] == "echo hand-authored" for e in events)
     assert any(e.get("_oma") == SESSION_START_MARKER for e in events)
+
+
+def test_emitted_hooks_json_is_wrapped(tmp_path):
+    """The written hooks.json wraps the event map under a top-level "hooks" key,
+    the shape Claude Code's plugin hooks.json loader requires."""
+    dsl_path = _write_plugin(tmp_path, BASE_DSL, hook_body="#!/usr/bin/env bash\n")
+    compile_plugin(dsl_path, write=True)
+    raw = json.loads(
+        (dsl_path.parent / "hooks" / "hooks.json").read_text(encoding="utf-8")
+    )
+    assert set(raw.keys()) == {"hooks"}
+    assert "SessionStart" in raw["hooks"]
+
+
+def test_recompile_preserves_wrapper_and_hand_authored(tmp_path):
+    """Recompiling a wrapped hooks.json must stay single-wrapped and keep a
+    hand-authored entry inside the wrapper (unwrap-on-read, wrap-on-write)."""
+    dsl_path = _write_plugin(tmp_path, BASE_DSL, hook_body="#!/usr/bin/env bash\n")
+    compile_plugin(dsl_path, write=True)
+    hooks_path = dsl_path.parent / "hooks" / "hooks.json"
+
+    # Inject a hand-authored SessionStart entry INSIDE the wrapper, as a user would.
+    payload = json.loads(hooks_path.read_text(encoding="utf-8"))
+    payload["hooks"]["SessionStart"].append(
+        {"hooks": [{"type": "command", "command": "echo hand-authored"}]}
+    )
+    hooks_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    # Recompile: must not double-wrap and must keep the hand-authored entry.
+    compile_plugin(dsl_path, write=True)
+    raw = json.loads(hooks_path.read_text(encoding="utf-8"))
+    assert set(raw.keys()) == {"hooks"}  # no double-wrap (no hooks.hooks)
+    commands = [e["hooks"][0]["command"] for e in raw["hooks"]["SessionStart"]]
+    assert "echo hand-authored" in commands
+    assert 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-ontology.sh"' in commands
+    assert sum(
+        1 for e in raw["hooks"]["SessionStart"] if e.get("_oma") == SESSION_START_MARKER
+    ) == 1
